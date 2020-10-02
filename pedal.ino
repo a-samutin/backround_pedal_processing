@@ -1,3 +1,4 @@
+#include <TM1637Display.h>
 #include "pedal.h"
 
 /*
@@ -135,10 +136,31 @@
   //вывод в сериал монитор на 115200
 */
 #define POT_PIN A0   //можно просто 0
-#define CALIB_TIME 5000 // 5 сек
+#define BAT_PIN A7   //пин измерения батареи
+#define CALIB_TIME 5000 // времф калибровки 5 сек
+#define CALIB_PIN  16
 #define EEPROM_ADDR 10  //1-0x1FF 
 #define STEPS 31  //от 0 до 30
+#define BUT1_PIN 7  // кнопка 1
 
+//Pins for 7segment display
+#define CLK 4
+#define DIO 3
+TM1637Display display(CLK, DIO);
+const uint8_t SEG_LO_b[] = {
+  SEG_F | SEG_E | SEG_D ,                          // L
+  SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,   // O
+  0,                                               //
+  SEG_F |  SEG_E | SEG_D | SEG_C | SEG_G           // b
+};
+
+const uint8_t SEG_CALI[] = {
+  SEG_G,                                           // -
+  SEG_A | SEG_D | SEG_E | SEG_F        ,           // C
+  SEG_A | SEG_B | SEG_C | SEG_E | SEG_F | SEG_G,   // A
+  SEG_F | SEG_E | SEG_D,                           // L
+  SEG_E | SEG_F                                    // I
+};
 /*
    Эта функция должна быть определена в основном сектче
    и она вызыаается и выполняет действия когда значение педали
@@ -153,52 +175,91 @@ void PedalAction(uint8_t val)
   //Serial.write(0xC0); // посыл на выход
   //Serial.write(temp);
 }
+#define BAT_NOM 90 //Номинальное напряжене батарии *10
+#define BAT_DIV 49 //напряжени на делители при BAT_NOM
+#define BAT_LOW 70 //минимально допустимое Vbatt*10   
 
+//Возвращает напляжение на батарее *10 в виде целого
+//числа.
+uint8_t GetBatteryV(uint8_t pin)
+{
+  uint32_t sum = 0;
+  analogRead(pin);
+  for (int i = 0; i < 100; i++) sum += analogRead(pin);
+  sum = sum * BAT_NOM * 5 / BAT_DIV / 10240;
+  return (uint8_t) sum;
+}
 
 void setup() {
   int8_t ret;
+
   Serial.begin(115200);
   Serial.println("Setup");
+  display.setBrightness(0x0f);
+  pinMode(CALIB_PIN, INPUT_PULLUP);
+  /*
+    int8_t Vbat = GetBatteryV(BAT_PIN);
+    Serial.println((String)"Vbat=" + Vbat);  Vbat = 80;
+    if (Vbat < BAT_LOW)
+    { //Батарея разряжена. выводим сообщение и зависаем
+    while (1) {
+      display.setSegments(SEG_LO_b); delay(700);
+      display.clear(); delay(200);
+    }
+    }
+  */
   uint8_t pstart, pend;
-  Serial.print("Try to init from EEPROM");
-  ret = InitPedalEEPROM(POT_PIN, STEPS, EEPROM_ADDR);
-  if (ret != 1)
-  {
-    Serial.println("..Failed!");
+  /*
+  if (digitalRead(CALIB_PIN) == 0)
+  { //была нажата кнопка в момент включени. Делаем калибровку
+    display.setSegments(&SEG_CALI[1]);
+    Serial.print("waiting for rlease//");
+    while (!digitalRead(CALIB_PIN)) //Ждем пока отпустят
+    { //и моргаем надписью
+      if ((millis() & 0x3FF) == 500) display.clear();
+      if ((millis() & 0x3FF) == 1000) display.setSegments(&SEG_CALI[1]);
+    }
+    display.setSegments(&SEG_CALI[1]);
+    Serial.println("waiting for rleased");
     Serial.print("Start Calibration..");
     ret = CalibratePedal(POT_PIN, CALIB_TIME, EEPROM_ADDR, pstart, pend);
-    if (ret != 1) {
-      Serial.print("Something wrong!  ret="); Serial.println(ret);
-      Serial.println("Stop!");
-      while (1);
-      }
-    Serial.println((String) "Start=" + pstart + "   End=" + pend );
-    InitPedal(POT_PIN, pstart, pend, STEPS);   
   }
-  ret =  GetPedalCalibration(EEPROM_ADDR, pstart, pend); //Чисто для проверки. А так не обязательно
-  Serial.println((String) "EEPROM data Start=" + pstart + "   End=" + pend + "  ret=" +ret );
-  PedalStart();
+  else
+  {
+    Serial.print("Trying to init from EEPROM");
+    ret = InitPedalEEPROM(POT_PIN, STEPS, EEPROM_ADDR);
+  }
+  if (ret != 1) */
+  { //не удалось получить калибровку
+    //показываем сообщение и используем дефолт
+    Serial.print("..Failed! Use default");
+    display.setSegments(SEG_CALI);
+    delay(3000);
+    pstart = 0;
+    pend = 255;
+    InitPedal(POT_PIN, pstart, pend, STEPS);
+  }
+  Serial.println("");
+ // Serial.println((String) "ret " + ret +   "Start=" + pstart + "   End=" + pend  );
+   PedalStart();
+
+
+
 }
 
 void TempR2(int16_t var)
 {
-  Serial.println(var);
- /* int num0, num1;
-  num0 = var / 10;
-  num1 = (var - (num0 * 10));
- 
-  tm1637.display(2, num0);
-  tm1637.display(3, num1);
-  */
+  // Serial.println(var);
+  display.showNumberDec(var, false);
 }
-uint16_t preset = 300;  
+uint16_t preset = 300;
 void loop() {
-     
-      TempR2(GetPedalDisplay(preset));  // фунция вывода на индикатор 
-      ++preset;
-      if (preset> 999) preset = 300;
-      delay(500);  //из-за этой большой задержки на "дисплей" будет выводится с пропусками, 
-                   //но "в синтезатор" должно все идти без пропусков.
-                   //при работе с настояшим  индикатором надо просто убрать этот delay
-      
-  }
+
+  TempR2(GetPedalDisplay(preset));  // фунция вывода на индикатор
+  ++preset;
+  if (preset > 999) preset = 300;
+  // delay(500);  //из-за этой большой задержки на "дисплей" будет выводится с пропусками,
+  //но "в синтезатор" должно все идти без пропусков.
+  //при работе с настояшим  индикатором надо просто убрать этот delay
+
+}

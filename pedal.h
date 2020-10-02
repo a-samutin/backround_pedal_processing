@@ -43,24 +43,19 @@ uint8_t GetNextAvrg(uint8_t in)
   static uint8_t tail = 0;
   static uint8_t num  = 0;
   static uint16_t sum = 0;
-  uint32_t ret;
+//  uint32_t ret;
   sum = sum + in;
   if (++num > BUF_SZ)
   {
     num = BUF_SZ;
     sum = sum - buf[tail];
-    tail = (++tail) & BUF_MASK;
+    tail++;
+    tail &=  BUF_MASK;
   }
   buf[head] = in;
-  head = (++head) & BUF_MASK;
-  //cчитаем среднее округляя результат с десятых до целого
-  ret = sum;
-  ret = ret * 10 / num;
-  if (ret % 10 < 5)
-    ret = ret / 10;
-  else
-    ret = ret / 10 + 1;
-  return uint8_t(ret);
+  ++head;
+  head &= BUF_MASK;
+  return uint8_t (sum / num);
 }
 
 /* Калибровка
@@ -89,7 +84,7 @@ uint8_t GetNextAvrg(uint8_t in)
      -1 если задан неверный адрес EEPROM
  Данные занимают 3 байта в EEPROM    
 */
-int8_t CalibratePedal(uint8_t pin, uint16_t calibrationTime, int addrEEPROM, uint8_t &startPos, uint8_t &endPos )
+int8_t CalibratePedal(uint8_t pin, uint16_t calibrationTime, uint16_t addrEEPROM, uint8_t &startPos, uint8_t &endPos )
 {
   uint8_t pmax = 0;
   uint8_t pmin = 255;
@@ -196,7 +191,7 @@ void InitPedal(uint8_t pin, uint8_t startPos, uint8_t endPos, uint8_t steps)
      -1 если задан неверный адрес EEPROM
      -2 отсутсвует подпись
 */
-int8_t GetPedalCalibration(int addrEEPROM, uint8_t &startPos, uint8_t &endPos)
+int8_t GetPedalCalibration(uint16_t addrEEPROM, uint8_t &startPos, uint8_t &endPos)
 {
   if (addrEEPROM == 0 || addrEEPROM >= EEPROM.length()) return -1;
   if (EEPROM.read(addrEEPROM) != SIGNATURE) return -2;
@@ -222,7 +217,7 @@ int8_t GetPedalCalibration(int addrEEPROM, uint8_t &startPos, uint8_t &endPos)
      -1 если задан неверный адрес EEPROM
 
 */
-int8_t InitPedalEEPROM(uint8_t pin, uint8_t steps, int addrEEPROM)
+int8_t InitPedalEEPROM(uint8_t pin, uint8_t steps, uint16_t addrEEPROM)
 {
 
   uint8_t startPos, endPos;
